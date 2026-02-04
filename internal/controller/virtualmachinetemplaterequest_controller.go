@@ -140,18 +140,18 @@ func (r *VirtualMachineTemplateRequestReconciler) Reconcile(ctx context.Context,
 		return ctrl.Result{}, err
 	}
 	defer func() {
-		setStatusConditions(ctx, tplReq, retErr)
+		setTemplateRequestStatusConditions(ctx, tplReq, retErr)
 		retErr = errors.Join(retErr, helper.Patch(ctx, tplReq))
 	}()
 
 	// Remove Progressing condition to reset state for this reconcile.
-	// It will be set by setStatusConditions or manually for permanent failures.
+	// It will be set by setTemplateRequestStatusConditions or manually for permanent failures.
 	meta.RemoveStatusCondition(&tplReq.Status.Conditions, v1alpha1.ConditionProgressing)
 
 	if validateErr := validateRequest(tplReq); validateErr != nil {
 		log.Error(validateErr, "Error validating VirtualMachineTemplateRequest")
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonInvalidConfiguration, "%s", validateErr.Error())
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonInvalidConfiguration)
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonInvalidConfiguration, "%s", validateErr.Error())
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonInvalidConfiguration)
 		return ctrl.Result{}, nil
 	}
 
@@ -226,7 +226,7 @@ func (r *VirtualMachineTemplateRequestReconciler) getTemplate(
 	}
 
 	if tpl.Labels[v1alpha1.LabelRequestUID] != string(tplReq.UID) {
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, fmt.Errorf("existing VirtualMachineTemplate %s/%s was not created by this request", tpl.Namespace, tpl.Name)
 	}
 
@@ -254,7 +254,7 @@ func (r *VirtualMachineTemplateRequestReconciler) processRequest(
 	}
 
 	if snap.Labels[v1alpha1.LabelRequestUID] != string(tplReq.UID) {
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, nil, fmt.Errorf("virtualMachineSnapshot %s/%s does not belong to this request", snap.Namespace, snap.Name)
 	}
 
@@ -270,13 +270,13 @@ func (r *VirtualMachineTemplateRequestReconciler) processRequest(
 	}
 
 	if ready, readyErr := isSnapshotContentReady(snapContent); readyErr != nil {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", readyErr.Error())
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", readyErr.Error())
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, nil, readyErr
 	} else if !ready {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
 			"Waiting for VirtualMachineSnapshotContent %s/%s to be ready", snapContent.Namespace, snapContent.Name)
-		setProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonWaiting)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonWaiting)
 		return nil, &ctrl.Result{RequeueAfter: requeueAfterSnapshotContentNotReady}, nil
 	}
 
@@ -318,7 +318,7 @@ func (r *VirtualMachineTemplateRequestReconciler) getSnapshotContent(
 	snap *snapshotv1beta1.VirtualMachineSnapshot,
 ) (*snapshotv1beta1.VirtualMachineSnapshotContent, error) {
 	if snap.Status.VirtualMachineSnapshotContentName == nil || *snap.Status.VirtualMachineSnapshotContentName == "" {
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, fmt.Errorf("virtualMachineSnapshot %s/%s does not have a VirtualMachineSnapshotContentName", snap.Namespace, snap.Name)
 	}
 
@@ -347,7 +347,7 @@ func (r *VirtualMachineTemplateRequestReconciler) cloneSnapshotContent(
 			}
 		} else {
 			if dv.Labels[v1alpha1.LabelRequestUID] != string(tplReq.UID) {
-				setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+				setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 				return fmt.Errorf("dataVolume %s/%s does not belong to this request", dv.Namespace, dv.Name)
 			}
 			continue
@@ -403,7 +403,7 @@ func (r *VirtualMachineTemplateRequestReconciler) createTemplate(
 	}
 
 	if vm.Spec.Template == nil {
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, fmt.Errorf("source VirtualMachine %s/%s has no template spec", vm.Namespace, vm.Name)
 	}
 
@@ -419,8 +419,8 @@ func (r *VirtualMachineTemplateRequestReconciler) createTemplate(
 	logf.FromContext(ctx).Info("Creating VirtualMachineTemplate", logTplNS, tpl.Namespace, logTplName, tpl.Name)
 	if err := r.Client.Create(ctx, tpl); err != nil {
 		if k8serrors.IsAlreadyExists(err) {
-			setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", err.Error())
-			setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+			setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", err.Error())
+			setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		}
 		return nil, err
 	}
@@ -435,7 +435,7 @@ func (r *VirtualMachineTemplateRequestReconciler) getExpandedVM(
 	snapContent *snapshotv1beta1.VirtualMachineSnapshotContent,
 ) (*virtv1.VirtualMachine, error) {
 	if snapContent.Spec.Source.VirtualMachine == nil {
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 		return nil, fmt.Errorf("virtualMachineSnapshotContent %s/%s has no source VirtualMachine",
 			snapContent.Namespace, snapContent.Name)
 	}
@@ -506,12 +506,12 @@ func validateRequest(tplReq *v1alpha1.VirtualMachineTemplateRequest) error {
 	return nil
 }
 
-func setStatusConditions(ctx context.Context, tplReq *v1alpha1.VirtualMachineTemplateRequest, retErr error) {
+func setTemplateRequestStatusConditions(ctx context.Context, tplReq *v1alpha1.VirtualMachineTemplateRequest, retErr error) {
 	if retErr != nil {
 		logf.FromContext(ctx).Error(retErr, "Reconciliation failed")
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", retErr.Error())
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "%s", retErr.Error())
 		if meta.FindStatusCondition(tplReq.Status.Conditions, v1alpha1.ConditionProgressing) == nil {
-			setProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonReconciling)
+			setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonReconciling)
 		}
 
 		return
@@ -522,18 +522,18 @@ func setStatusConditions(ctx context.Context, tplReq *v1alpha1.VirtualMachineTem
 
 	cond := meta.FindStatusCondition(tplReq.Status.Conditions, v1alpha1.ConditionReady)
 	if cond == nil {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonReconciling, "")
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonReconciling, "")
 	} else if cond.Status == metav1.ConditionTrue {
 		progressingStatus = metav1.ConditionFalse
 		progressingReason = v1alpha1.ReasonReconciled
 	}
 
 	if meta.FindStatusCondition(tplReq.Status.Conditions, v1alpha1.ConditionProgressing) == nil {
-		setProgressingCondition(ctx, tplReq, progressingStatus, progressingReason)
+		setTemplateRequestProgressingCondition(ctx, tplReq, progressingStatus, progressingReason)
 	}
 }
 
-func setReadyCondition(
+func setTemplateRequestReadyCondition(
 	ctx context.Context, tplReq *v1alpha1.VirtualMachineTemplateRequest,
 	status metav1.ConditionStatus, reason, message string, messageArgs ...any,
 ) {
@@ -548,7 +548,7 @@ func setReadyCondition(
 	})
 }
 
-func setProgressingCondition(
+func setTemplateRequestProgressingCondition(
 	ctx context.Context, tplReq *v1alpha1.VirtualMachineTemplateRequest,
 	status metav1.ConditionStatus, reason string,
 ) {
@@ -579,12 +579,12 @@ func syncSnapshotStatusConditions(
 
 	failed, _ := isSnapshotStatusConditionTrue(snap, snapshotv1beta1.ConditionFailure)
 	if !failed && isSnapshotProgressing(snap) {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
 			"Waiting for VirtualMachineSnapshot %s/%s to be ready", snap.Namespace, snap.Name)
 	} else {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed,
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed,
 			"VirtualMachineSnapshot %s/%s failed", snap.Namespace, snap.Name)
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 	}
 }
 
@@ -648,12 +648,12 @@ func syncDataVolumeStatusConditions(ctx context.Context, tplReq *v1alpha1.Virtua
 	}
 
 	if progressing || !present {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
 			"Waiting for DataVolume %s/%s to be ready", dv.Namespace, dv.Name)
-		setProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonWaiting)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonWaiting)
 	} else {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "DataVolume %s/%s failed", dv.Namespace, dv.Name)
-		setProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed, "DataVolume %s/%s failed", dv.Namespace, dv.Name)
+		setTemplateRequestProgressingCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonFailed)
 	}
 }
 
@@ -676,10 +676,10 @@ func syncTemplateStatusConditions(
 	logf.FromContext(ctx).V(logs.DebugLevel).Info("Syncing status conditions from VirtualMachineTemplate",
 		logTplNS, tpl.Namespace, logTplName, tpl.Name)
 	if cond := meta.FindStatusCondition(tpl.Status.Conditions, v1alpha1.ConditionReady); cond == nil || cond.Status != metav1.ConditionTrue {
-		setReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionFalse, v1alpha1.ReasonWaiting,
 			"Waiting for VirtualMachineTemplate %s/%s to be ready", tpl.Namespace, tpl.Name)
 	} else {
-		setReadyCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonReconciled, "%s", cond.Message)
+		setTemplateRequestReadyCondition(ctx, tplReq, metav1.ConditionTrue, v1alpha1.ReasonReconciled, "%s", cond.Message)
 	}
 }
 

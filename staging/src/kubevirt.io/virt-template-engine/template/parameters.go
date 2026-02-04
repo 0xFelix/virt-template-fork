@@ -50,7 +50,7 @@ func MergeParameters(tplParams []v1alpha1.Parameter, params map[string]string) (
 // in the template and that all referenced parameters are defined.
 // Returns warnings for unused parameters and errors for undefined parameter references.
 func ValidateParameterReferences(tpl *v1alpha1.VirtualMachineTemplate) ([]string, field.ErrorList) {
-	obj, err := getVirtualMachineObject(&tpl.Spec)
+	obj, err := GetVirtualMachineObject(&tpl.Spec)
 	if err != nil {
 		return nil, field.ErrorList{err}
 	}

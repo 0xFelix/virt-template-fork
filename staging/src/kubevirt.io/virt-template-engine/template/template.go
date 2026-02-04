@@ -96,9 +96,9 @@ func generateParameterValues(
 	return params, nil
 }
 
-// getVirtualMachineObject extracts the VirtualMachine runtime.Object from the spec of a VirtualMachineTemplate.
+// GetVirtualMachineObject extracts the VirtualMachine runtime.Object from the spec of a VirtualMachineTemplate.
 // It handles both Raw JSON bytes and embedded Object representations.
-func getVirtualMachineObject(tplSpec *v1alpha1.VirtualMachineTemplateSpec) (runtime.Object, *field.Error) {
+func GetVirtualMachineObject(tplSpec *v1alpha1.VirtualMachineTemplateSpec) (runtime.Object, *field.Error) {
 	if tplSpec.VirtualMachine == nil || (len(tplSpec.VirtualMachine.Raw) == 0 && tplSpec.VirtualMachine.Object == nil) {
 		return nil, field.Invalid(field.NewPath("spec", "virtualMachine"),
 			tplSpec.VirtualMachine, "virtualMachine is required and cannot be empty")

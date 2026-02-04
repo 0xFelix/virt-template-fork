@@ -71,7 +71,7 @@ func (p *processor) Process(tpl *v1alpha1.VirtualMachineTemplate) (*virtv1.Virtu
 		return nil, "", gErr
 	}
 
-	obj, gErr := getVirtualMachineObject(&tpl.Spec)
+	obj, gErr := GetVirtualMachineObject(&tpl.Spec)
 	if gErr != nil {
 		return nil, "", gErr
 	}
